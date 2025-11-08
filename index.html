@@ -1614,45 +1614,19 @@
                 console.log("✅ QR Code recebido:", currentPixCode.substring(0, 50) + "...");
                 console.log("✅ Transaction ID:", currentTransactionId);
                 
-                // Gerar QR Code visual
-                const qrcodeElement = document.getElementById('qrcodeImage');
-                qrcodeElement.innerHTML = '';
-                
-                QRCode.toCanvas(qrcodeElement, currentPixCode, {
-                    width: 200,
-                    height: 200,
-                    colorDark: "#0a2463",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.H
-                }, function(error) {
-                    if (error) {
-                        console.error('Erro ao gerar QR Code:', error);
-                        qrcodeElement.innerHTML = `
-                            <div style="padding: 20px; text-align: center;">
-                                <p style="color: #666; margin-bottom: 10px;">Use o código PIX abaixo:</p>
-                                <div class="pix-codigo">${currentPixCode}</div>
-                            </div>
-                        `;
-                    } else {
-                        console.log("✅ QR Code gerado com sucesso!");
-                    }
-                });
-                
-                document.getElementById('pixCode').textContent = currentPixCode;
-                document.getElementById('pixQrCode').style.display = 'block';
-                
-            } else {
-                console.error("❌ Estrutura PIX não encontrada:", paymentResponse);
-                
-                // ✅ TENTATIVA DE FALLBACK - PROCURAR QRCODE EM OUTROS CAMPOS
-                const responseString = JSON.stringify(paymentResponse);
-                const qrCodeMatch = responseString.match(/"qrcode":"([^"]+)"/);
-                
-                if (qrCodeMatch && qrCodeMatch[1]) {
-                    console.log("✅ QR Code encontrado via fallback:", qrCodeMatch[1].substring(0, 50) + "...");
-                    currentPixCode = qrCodeMatch[1];
-                    currentTransactionId = paymentResponse.id || 'temp-id';
-                    
+                // ✅ CORREÇÃO: Verificar se QRCode está disponível
+                if (typeof QRCode === 'undefined') {
+                    console.error("❌ QRCode não está disponível. Usando fallback...");
+                    // Fallback: mostrar apenas o código PIX
+                    const qrcodeElement = document.getElementById('qrcodeImage');
+                    qrcodeElement.innerHTML = `
+                        <div style="padding: 20px; text-align: center;">
+                            <p style="color: #666; margin-bottom: 10px;">QR Code não disponível. Use o código PIX abaixo:</p>
+                            <div class="pix-codigo">${currentPixCode}</div>
+                        </div>
+                    `;
+                } else {
+                    // Gerar QR Code visual
                     const qrcodeElement = document.getElementById('qrcodeImage');
                     qrcodeElement.innerHTML = '';
                     
@@ -1662,14 +1636,27 @@
                         colorDark: "#0a2463",
                         colorLight: "#ffffff",
                         correctLevel: QRCode.CorrectLevel.H
+                    }, function(error) {
+                        if (error) {
+                            console.error('Erro ao gerar QR Code:', error);
+                            qrcodeElement.innerHTML = `
+                                <div style="padding: 20px; text-align: center;">
+                                    <p style="color: #666; margin-bottom: 10px;">Use o código PIX abaixo:</p>
+                                    <div class="pix-codigo">${currentPixCode}</div>
+                                </div>
+                            `;
+                        } else {
+                            console.log("✅ QR Code gerado com sucesso!");
+                        }
                     });
-                    
-                    document.getElementById('pixCode').textContent = currentPixCode;
-                    document.getElementById('pixQrCode').style.display = 'block';
-                    
-                } else {
-                    throw new Error('Dados PIX não recebidos da API. Estrutura: ' + JSON.stringify(paymentResponse));
                 }
+                
+                document.getElementById('pixCode').textContent = currentPixCode;
+                document.getElementById('pixQrCode').style.display = 'block';
+                
+            } else {
+                console.error("❌ Estrutura PIX não encontrada:", paymentResponse);
+                throw new Error('Dados PIX não recebidos da API');
             }
         }
 
