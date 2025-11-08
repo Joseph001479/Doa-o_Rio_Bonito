@@ -1560,23 +1560,21 @@
             console.log("Status:", response.status);
             console.log("Dados:", data);
             
-            if (!response.ok) {
-                // ✅ SE A GHOSTPAY RETORNOU SUCESSO MAS NOSSA API MARCOU COMO ERRO
-                if (response.status === 200 && data.debug_info) {
-                    console.log("✅ GhostPay retornou sucesso, mas nossa API marcou como erro");
-                    
-                    // Tentar extrair a resposta da GhostPay do debug_info
-                    if (data.debug_info.resposta_ghostpay) {
-                        try {
-                            const ghostpayResponse = JSON.parse(data.debug_info.resposta_ghostpay);
-                            console.log("✅ Resposta GhostPay extraída:", ghostpayResponse);
-                            return ghostpayResponse;
-                        } catch (e) {
-                            console.error("Erro ao parsear resposta GhostPay:", e);
-                        }
-                    }
-                }
+            // ✅ CORREÇÃO CRÍTICA: Se a GhostPay retornou sucesso mas nossa API marcou como erro
+            if (response.status === 200 && data.debug_info && data.debug_info.resposta_ghostpay) {
+                console.log("✅ GhostPay retornou sucesso, extraindo resposta...");
                 
+                try {
+                    const ghostpayResponse = JSON.parse(data.debug_info.resposta_ghostpay);
+                    console.log("✅ Resposta GhostPay extraída com sucesso!");
+                    return ghostpayResponse;
+                } catch (e) {
+                    console.error("❌ Erro ao parsear resposta GhostPay:", e);
+                    throw new Error('Erro ao processar resposta da API de pagamento');
+                }
+            }
+            
+            if (!response.ok) {
                 throw new Error(data.message || `Erro ${response.status}`);
             }
             
