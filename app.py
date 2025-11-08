@@ -26,7 +26,7 @@ basic_auth = base64.b64encode(auth_string.encode()).decode()
 # =============================================================================
 
 def clean_document(document):
-    """Limpa CPF/CNPJ - remove caracteres não numéricos (equivalente a /\D/g em JS)"""
+    """Limpa CPF/CNPJ - remove caracteres não numéricos"""
     if document:
         return re.sub(r'\D', '', document)
     return "00000000191"
@@ -82,7 +82,7 @@ def create_payment():
                 # ✅ ADICIONAR CAMPOS OPCIONAIS QUE EVITAM ERROS
                 "phone": customer.get('phone', '11999999999'),  # Default para evitar erro
                 "document": {
-                    "number": clean_document(customer.get('document')),  # ✅ CORRIGIDO - função Python
+                    "number": clean_document(customer.get('document')),
                     "type": "CPF"
                 }
             },
@@ -112,7 +112,7 @@ def create_payment():
         
         print("=== ENVIANDO PARA GHOSTPAY ===")
         print(f"URL: {GHOSTPAY_URL}")
-        print(f"Headers: {dict(headers)}")  # ✅ Convertendo para dict para print seguro
+        print(f"Headers Authorization: Basic {basic_auth[:50]}...")
         print(f"Payload: {payload}")
         
         # Fazer requisição para GhostPay
@@ -125,60 +125,107 @@ def create_payment():
         
         print("=== RESPOSTA GHOSTPAY ===")
         print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.text}")
+        print(f"Response Headers: {dict(response.headers)}")
+        print(f"Response Text: {response.text}")
         
+        # ✅ DEBUG DETALHADO DA RESPOSTA
         if response.status_code == 201:
-            return jsonify(response.json()), 201
+            response_data = response.json()
+            print("=== DADOS PIX RECEBIDOS ===")
+            print(f"Resposta completa: {response_data}")
+            
+            # Verificar se temos dados PIX
+            if 'pix' in response_data and response_data['pix']:
+                pix_data = response_data['pix']
+                print(f"Dados PIX: {pix_data}")
+                
+                # Garantir que temos qrCode
+                if 'qrCode' in pix_data:
+                    print(f"✅ QR Code recebido: {pix_data['qrCode'][:50]}...")
+                else:
+                    print("❌ QR Code não encontrado na resposta PIX")
+                    
+            else:
+                print("❌ Dados PIX não encontrados na resposta")
+                print(f"Estrutura da resposta: {list(response_data.keys())}")
+                
+            return jsonify(response_data), 201
+            
         else:
+            # ❌ ERRO NA GHOSTPAY
             try:
                 error_response = response.json()
                 error_details = error_response.get('refusedReason', {}).get('description', response.text)
+                print(f"❌ ERRO GHOSTPAY: {error_details}")
             except:
                 error_details = response.text
+                print(f"❌ ERRO GHOSTPAY (raw): {error_details}")
                 
             return jsonify({
                 "error": True,
                 "message": f"Erro na API GhostPay: {response.status_code}",
                 "details": error_details,
-                "status_code": response.status_code
+                "status_code": response.status_code,
+                "debug_info": {
+                    "payload_enviado": payload,
+                    "resposta_ghostpay": response.text
+                }
             }), response.status_code
             
     except Exception as e:
         print(f"ERRO INTERNO: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        
         return jsonify({
             "error": True,
-            "message": f"Erro interno: {str(e)}"
+            "message": f"Erro interno: {str(e)}",
+            "traceback": traceback.format_exc()
         }), 500
 
-@app.route('/test-pix-complete', methods=['GET'])
-def test_pix_complete():
-    """Teste COMPLETO com payload que funciona"""
+@app.route('/test-pix-debug', methods=['GET'])
+def test_pix_debug():
+    """Teste COMPLETO com debug detalhado"""
     try:
-        # ✅ PAYLOAD COMPLETO E CORRETO
+        # ✅ PAYLOAD IDÊNTICO AO QUE O FRONTEND ENVIA
         test_payload = {
+            "customer": {
+                "name": "MAURICIO",
+                "email": "MAURICIO.MARTINS@GMAIL.COM", 
+                "document": "10931469740"
+            },
+            "amount": 25000,
+            "description": "Doação Rio Bonito SOS - MAURICIO"
+        }
+        
+        customer = test_payload['customer']
+        amount = test_payload['amount']
+        
+        # ✅ RECRIANDO O PAYLOAD EXATO DO create-payment
+        payload = {
             "paymentMethod": "PIX",
             "customer": {
-                "name": "João Silva Teste",
-                "email": "joao.teste@email.com",
+                "name": customer['name'],
+                "email": customer['email'],
                 "phone": "11999999999",
                 "document": {
-                    "number": "00000000191",
+                    "number": clean_document(customer.get('document')),
                     "type": "CPF"
                 }
             },
             "items": [
                 {
-                    "title": "Doação Teste Rio Bonito SOS",
-                    "unitPrice": 1000,
+                    "title": "Doação para Rio Bonito SOS",
+                    "unitPrice": amount,
                     "quantity": 1,
                     "externalRef": f"test-{int(time.time())}"
                 }
             ],
-            "amount": 1000,
-            "description": "Teste de doação via PIX",
+            "amount": amount,
+            "description": test_payload.get('description', 'Doação para Rio Bonito SOS'),
             "metadata": {
-                "campaign": "teste",
-                "source": "api-test"
+                "campaign": "rio-bonito-sos", 
+                "source": "website"
             },
             "pix": {}
         }
@@ -189,12 +236,12 @@ def test_pix_complete():
             'authorization': f'Basic {basic_auth}'
         }
         
-        print("=== TESTE PIX COMPLETO ===")
-        print(f"Payload: {test_payload}")
+        print("=== TESTE PIX DEBUG - PAYLOAD IDÊNTICO ===")
+        print(f"Payload: {payload}")
         
         response = requests.post(
             GHOSTPAY_URL,
-            json=test_payload,
+            json=payload,
             headers=headers,
             timeout=30
         )
@@ -202,53 +249,110 @@ def test_pix_complete():
         result = {
             "status_code": response.status_code,
             "success": response.status_code == 201,
-            "response": response.json() if response.text else {},
-            "diagnostico": "✅ FUNCIONOU" if response.status_code == 201 else "❌ FALHOU",
-            "ghostpay_message": response.text[:200] if response.text else "Sem resposta"
+            "ghostpay_response": response.json() if response.text else {},
+            "request_debug": {
+                "url": GHOSTPAY_URL,
+                "headers": {"authorization": f"Basic {basic_auth[:50]}..."},
+                "payload": payload
+            },
+            "pix_data_present": False,
+            "qr_code_present": False
         }
+        
+        # ✅ VERIFICAR DADOS PIX
+        if response.status_code == 201:
+            response_data = response.json()
+            result["ghostpay_response"] = response_data
+            
+            if 'pix' in response_data and response_data['pix']:
+                result["pix_data_present"] = True
+                if 'qrCode' in response_data['pix']:
+                    result["qr_code_present"] = True
+                    result["qr_code_preview"] = response_data['pix']['qrCode'][:100] + "..."
+        
+        print(f"=== RESULTADO TESTE DEBUG ===")
+        print(f"Status: {result['status_code']}")
+        print(f"PIX Data Present: {result['pix_data_present']}")
+        print(f"QR Code Present: {result['qr_code_present']}")
         
         return jsonify(result)
         
     except Exception as e:
         return jsonify({
             "error": True,
-            "message": f"Erro no teste: {str(e)}"
+            "message": f"Erro no teste: {str(e)}",
+            "traceback": str(e)
         }), 500
 
-@app.route('/debug-headers', methods=['GET'])
-def debug_headers():
-    """Mostra os headers que estão sendo usados"""
-    return jsonify({
-        "authorization_header": f"Basic {basic_auth}",
-        "secret_key": SECRET_KEY[:20] + "...",
-        "company_id": COMPANY_ID,
-        "ghostpay_url": GHOSTPAY_URL,
-        "status": "Configurado - Sem erros de sintaxe"
-    })
-
-@app.route('/test', methods=['GET'])
-def test():
-    """Endpoint de teste básico"""
-    return jsonify({
-        "message": "API funcionando!",
-        "status": "OK",
-        "timestamp": time.time()
-    })
+@app.route('/debug-ghostpay-response', methods=['GET'])
+def debug_ghostpay_response():
+    """Analisa a estrutura da resposta da GhostPay"""
+    try:
+        # Payload mínimo para teste
+        test_payload = {
+            "paymentMethod": "PIX",
+            "customer": {
+                "name": "Teste Debug",
+                "email": "debug@test.com",
+                "phone": "11999999999",
+                "document": {
+                    "number": "00000000191",
+                    "type": "CPF"
+                }
+            },
+            "items": [{
+                "title": "Teste Debug",
+                "unitPrice": 1000,
+                "quantity": 1,
+                "externalRef": "debug-001"
+            }],
+            "amount": 1000,
+            "description": "Teste Debug",
+            "pix": {}
+        }
+        
+        headers = {
+            'accept': 'application/json',
+            'content-type': 'application/json',
+            'authorization': f'Basic {basic_auth}'
+        }
+        
+        response = requests.post(GHOSTPAY_URL, json=test_payload, headers=headers, timeout=30)
+        
+        analysis = {
+            "status_code": response.status_code,
+            "response_keys": [],
+            "has_pix": False,
+            "pix_structure": {},
+            "full_response": response.json() if response.text else {}
+        }
+        
+        if response.status_code == 201:
+            data = response.json()
+            analysis["response_keys"] = list(data.keys())
+            analysis["has_pix"] = 'pix' in data
+            if analysis["has_pix"]:
+                analysis["pix_structure"] = {
+                    "pix_keys": list(data['pix'].keys()) if data['pix'] else [],
+                    "pix_data": data['pix']
+                }
+        
+        return jsonify(analysis)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/')
 def home():
     return jsonify({
-        "message": "API Rio Bonito SOS - Sistema Corrigido ✅",
-        "version": "3.1.0",
-        "status": "Operacional - Sem erros de sintaxe",
-        "endpoints": {
-            "health": "/health (GET)",
-            "test": "/test (GET)",
-            "create_payment": "/create-payment (POST)",
-            "test_pix": "/test-pix-complete (GET)",
-            "debug": "/debug-headers (GET)"
-        },
-        "notes": "Erro de sintaxe resolvido - código 100% Python"
+        "message": "API Rio Bonito SOS - Debug Mode",
+        "version": "4.0.0",
+        "status": "Debug Ativo",
+        "endpoints_debug": {
+            "test_pix_complete": "/test-pix-debug (GET)",
+            "analyze_response": "/debug-ghostpay-response (GET)",
+            "health": "/health (GET)"
+        }
     })
 
 if __name__ == '__main__':
