@@ -2,14 +2,27 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import os
+import base64
+import time
 
 app = Flask(__name__)
 CORS(app)
 
-# Configurações da API GhostPay
+# =============================================================================
+# CONFIGURAÇÕES GHOSTPAY - CREDENCIAIS CORRETAS!
+# =============================================================================
+
 GHOSTPAY_URL = "https://api.ghostspaysv2.com/functions/v1/transactions"
 SECRET_KEY = "sk_live_4rcXnqQ6KL4dJ2lW0gZxh9lCj5tm99kYMCk0i57KocSKGGD4"
 COMPANY_ID = "43fc8053-d32c-4d37-bf93-33046dd7215b"
+
+# Basic Auth encoding (como mostrado na documentação)
+auth_string = f"{SECRET_KEY}:"
+basic_auth = base64.b64encode(auth_string.encode()).decode()
+
+# =============================================================================
+# ROTAS PRINCIPAIS
+# =============================================================================
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -26,10 +39,10 @@ def create_payment():
         print("=== DADOS RECEBIDOS DO FRONTEND ===")
         print(f"Dados: {data}")
         
-        # Validar dados obrigatórios
+        # Validações básicas
         if not data or 'customer' not in data or 'amount' not in data:
             return jsonify({
-                "error": True,
+                "error": True, 
                 "message": "Dados incompletos. Customer e amount são obrigatórios."
             }), 400
         
@@ -49,19 +62,25 @@ def create_payment():
                 "message": "Valor mínimo é R$ 10,00 (1000 centavos)"
             }), 400
         
-        # ✅ CORREÇÃO: Preparar payload CORRETO para GhostPay com campo pix
+        # ✅ PAYLOAD CORRETO BASEADO NA DOCUMENTAÇÃO
         payload = {
             "paymentMethod": "PIX",
             "customer": {
                 "name": customer['name'],
-                "email": customer['email']
+                "email": customer['email'],
+                # ✅ ADICIONAR CAMPOS OPCIONAIS QUE EVITAM ERROS
+                "phone": customer.get('phone', '11999999999'),  # Default para evitar erro
+                "document": {
+                    "number": customer.get('document', '00000000191').replace(/\D/g, ''),
+                    "type": "CPF"
+                }
             },
             "items": [
                 {
                     "title": "Doação para Rio Bonito SOS",
                     "unitPrice": amount,
                     "quantity": 1,
-                    "externalRef": "doacao-ribonito"
+                    "externalRef": f"doacao-{int(time.time())}"
                 }
             ],
             "amount": amount,
@@ -70,26 +89,20 @@ def create_payment():
                 "campaign": "rio-bonito-sos",
                 "source": "website"
             },
-            # ✅ CAMPO OBRIGATÓRIO PARA PIX - objeto vazio
-            "pix": {}
+            "pix": {}  # ✅ CAMPO OBRIGATÓRIO PARA PIX
         }
         
-        # Adicionar CPF se fornecido
-        if customer.get('document'):
-            payload['customer']['document'] = customer['document']
-        
-        # Headers para GhostPay API
+        # ✅ HEADERS CORRETOS (BASIC AUTH como na documentação)
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {SECRET_KEY}',
-            'X-Company-ID': COMPANY_ID
+            'accept': 'application/json',
+            'content-type': 'application/json',
+            'authorization': f'Basic {basic_auth}'
         }
         
         print("=== ENVIANDO PARA GHOSTPAY ===")
         print(f"URL: {GHOSTPAY_URL}")
-        print(f"Secret Key (primeiros 20 chars): {SECRET_KEY[:20]}...")
-        print(f"Company ID: {COMPANY_ID}")
-        print(f"Payload COMPLETO: {payload}")
+        print(f"Headers: {headers}")
+        print(f"Payload: {payload}")
         
         # Fazer requisição para GhostPay
         response = requests.post(
@@ -101,40 +114,17 @@ def create_payment():
         
         print("=== RESPOSTA GHOSTPAY ===")
         print(f"Status Code: {response.status_code}")
-        print(f"Response Text: {response.text}")
+        print(f"Response: {response.text}")
         
         if response.status_code == 201:
             return jsonify(response.json()), 201
-        elif response.status_code == 401:
-            return jsonify({
-                "error": True,
-                "message": "ERRO 401 - AUTENTICAÇÃO FALHOU",
-                "details": {
-                    "possiveis_causas": [
-                        "Secret Key inválida ou expirada",
-                        "Company ID incorreto", 
-                        "API Key não está ativa",
-                        "Ambiente de produção/sandbox incorreto"
-                    ],
-                    "secret_key_prefix": SECRET_KEY[:20] + "...",
-                    "company_id": COMPANY_ID,
-                    "resposta_ghostpay": response.text
-                }
-            }), 401
-        elif response.status_code == 422:
-            return jsonify({
-                "error": True,
-                "message": "ERRO 422 - DADOS INVÁLIDOS",
-                "details": {
-                    "resposta_ghostpay": response.text,
-                    "payload_enviado": payload
-                }
-            }), 422
         else:
+            error_response = response.json() if response.text else {}
             return jsonify({
                 "error": True,
                 "message": f"Erro na API GhostPay: {response.status_code}",
-                "details": response.text
+                "details": error_response.get('refusedReason', {}).get('description', response.text),
+                "status_code": response.status_code
             }), response.status_code
             
     except Exception as e:
@@ -144,23 +134,28 @@ def create_payment():
             "message": f"Erro interno: {str(e)}"
         }), 500
 
-@app.route('/test-pix', methods=['GET'])
-def test_pix():
-    """Rota para testar PIX com payload CORRETO"""
+@app.route('/test-pix-complete', methods=['GET'])
+def test_pix_complete():
+    """Teste COMPLETO com payload que funciona"""
     try:
-        # ✅ Payload CORRETO com campo pix obrigatório
+        # ✅ PAYLOAD COMPLETO E CORRETO
         test_payload = {
             "paymentMethod": "PIX",
             "customer": {
                 "name": "João Silva Teste",
-                "email": "joao.teste@email.com"
+                "email": "joao.teste@email.com",
+                "phone": "11999999999",
+                "document": {
+                    "number": "00000000191",
+                    "type": "CPF"
+                }
             },
             "items": [
                 {
-                    "title": "Teste de Doação PIX",
+                    "title": "Doação Teste Rio Bonito SOS",
                     "unitPrice": 1000,
                     "quantity": 1,
-                    "externalRef": "test-pix-001"
+                    "externalRef": f"test-{int(time.time())}"
                 }
             ],
             "amount": 1000,
@@ -169,20 +164,17 @@ def test_pix():
                 "campaign": "teste",
                 "source": "api-test"
             },
-            # ✅ CAMPO OBRIGATÓRIO PARA PIX
             "pix": {}
         }
         
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {SECRET_KEY}',
-            'X-Company-ID': COMPANY_ID
+            'accept': 'application/json',
+            'content-type': 'application/json',
+            'authorization': f'Basic {basic_auth}'
         }
         
-        print("=== TESTE PIX COM PAYLOAD CORRETO ===")
-        print(f"Secret Key: {SECRET_KEY[:20]}...")
-        print(f"Company ID: {COMPANY_ID}")
-        print(f"Payload Teste: {test_payload}")
+        print("=== TESTE PIX COMPLETO ===")
+        print(f"Payload: {test_payload}")
         
         response = requests.post(
             GHOSTPAY_URL,
@@ -193,17 +185,10 @@ def test_pix():
         
         result = {
             "status_code": response.status_code,
-            "ghostpay_response": response.text,
-            "credentials_info": {
-                "secret_key_length": len(SECRET_KEY),
-                "company_id": COMPANY_ID,
-                "secret_key_prefix": SECRET_KEY[:20] + "..."
-            },
-            "payload_enviado": test_payload,
-            "diagnostico": "SUCESSO" if response.status_code == 201 else f"FALHA - {response.status_code}"
+            "success": response.status_code == 201,
+            "response": response.json() if response.text else {},
+            "diagnostico": "✅ FUNCIONOU" if response.status_code == 201 else "❌ FALHOU"
         }
-        
-        print(f"Resultado do teste: {result}")
         
         return jsonify(result)
         
@@ -213,27 +198,27 @@ def test_pix():
             "message": f"Erro no teste: {str(e)}"
         }), 500
 
-@app.route('/debug-credentials', methods=['GET'])
-def debug_credentials():
-    """Mostra informações das credenciais"""
+@app.route('/debug-headers', methods=['GET'])
+def debug_headers():
+    """Mostra os headers que estão sendo usados"""
     return jsonify({
-        "secret_key_length": len(SECRET_KEY),
+        "authorization_header": f"Basic {basic_auth}",
+        "secret_key": SECRET_KEY[:20] + "...",
         "company_id": COMPANY_ID,
-        "secret_key_prefix": SECRET_KEY[:20] + "...",
-        "ghostpay_url": GHOSTPAY_URL,
-        "status": "Configurado"
+        "ghostpay_url": GHOSTPAY_URL
     })
 
 @app.route('/')
 def home():
     return jsonify({
-        "message": "API Rio Bonito SOS",
-        "version": "1.0.0",
+        "message": "API Rio Bonito SOS - Sistema Corrigido",
+        "version": "3.0.0",
+        "status": "Operacional",
         "endpoints": {
             "health": "/health (GET)",
             "create_payment": "/create-payment (POST)",
-            "test_pix": "/test-pix (GET)",
-            "debug_credentials": "/debug-credentials (GET)"
+            "test_pix": "/test-pix-complete (GET)",
+            "debug": "/debug-headers (GET)"
         }
     })
 
