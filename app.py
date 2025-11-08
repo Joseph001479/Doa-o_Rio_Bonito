@@ -4,7 +4,7 @@ import requests
 import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # Isso resolve CORS para SEU frontend
 
 # Configurações da API GhostPay
 GHOSTPAY_URL = "https://api.ghostspaysv2.com/functions/v1/transactions"
@@ -17,20 +17,14 @@ def health_check():
 
 @app.route('/create-payment', methods=['POST', 'OPTIONS'])
 def create_payment():
-    # Lidar com preflight CORS
     if request.method == 'OPTIONS':
-        response = jsonify({'status': 'OK'})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-        return response, 200
+        return '', 200
     
     try:
         data = request.get_json()
         
-        print("=== DADOS RECEBIDOS ===")
-        print(f"Customer: {data.get('customer')}")
-        print(f"Amount: {data.get('amount')}")
+        print("=== DADOS RECEBIDOS DO FRONTEND ===")
+        print(f"Dados: {data}")
         
         # Validar dados obrigatórios
         if not data or 'customer' not in data or 'amount' not in data:
@@ -91,11 +85,9 @@ def create_payment():
         
         print("=== ENVIANDO PARA GHOSTPAY ===")
         print(f"URL: {GHOSTPAY_URL}")
-        print(f"Headers Auth: Bearer {SECRET_KEY[:20]}...")  # Mostrar apenas parte do token
-        print(f"Company ID: {COMPANY_ID}")
         print(f"Payload: {payload}")
         
-        # Fazer requisição para GhostPay
+        # Fazer requisição para GhostPay (AGORA DO BACKEND, SEM CORS!)
         response = requests.post(
             GHOSTPAY_URL,
             json=payload,
@@ -104,22 +96,11 @@ def create_payment():
         )
         
         print("=== RESPOSTA GHOSTPAY ===")
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.text}")
+        print(f"Status: {response.status_code}")
+        print(f"Resposta: {response.text}")
         
         if response.status_code == 201:
             return jsonify(response.json()), 201
-        elif response.status_code == 401:
-            return jsonify({
-                "error": True,
-                "message": "ERRO 401 - Não autorizado. Verifique:",
-                "details": [
-                    "1. Secret Key está correta?",
-                    "2. Company ID está correto?",
-                    "3. A API Key está ativa?",
-                    f"Resposta completa: {response.text}"
-                ]
-            }), 401
         else:
             return jsonify({
                 "error": True,
@@ -127,90 +108,16 @@ def create_payment():
                 "details": response.text
             }), response.status_code
             
-    except requests.exceptions.RequestException as e:
-        print(f"Erro de conexão: {str(e)}")
-        return jsonify({
-            "error": True,
-            "message": f"Erro de conexão: {str(e)}"
-        }), 500
     except Exception as e:
-        print(f"Erro interno: {str(e)}")
+        print(f"ERRO: {str(e)}")
         return jsonify({
             "error": True,
             "message": f"Erro interno: {str(e)}"
         }), 500
 
-@app.route('/test-ghostpay', methods=['GET'])
-def test_ghostpay():
-    """Rota para testar a conexão com GhostPay"""
-    try:
-        # Payload de teste mínimo
-        test_payload = {
-            "paymentMethod": "PIX",
-            "customer": {
-                "name": "João Silva",
-                "email": "joao@teste.com"
-            },
-            "items": [
-                {
-                    "title": "Teste de Doação",
-                    "unitPrice": 1000,
-                    "quantity": 1,
-                    "externalRef": "test-001"
-                }
-            ],
-            "amount": 1000,
-            "description": "Teste de conexão com GhostPay"
-        }
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {SECRET_KEY}',
-            'X-Company-ID': COMPANY_ID
-        }
-        
-        print("=== TESTANDO GHOSTPAY ===")
-        print(f"Secret Key: {SECRET_KEY[:20]}...")
-        print(f"Company ID: {COMPANY_ID}")
-        
-        response = requests.post(
-            GHOSTPAY_URL,
-            json=test_payload,
-            headers=headers,
-            timeout=30
-        )
-        
-        result = {
-            "status_code": response.status_code,
-            "ghostpay_response": response.text,
-            "credentials_check": {
-                "secret_key_length": len(SECRET_KEY),
-                "company_id": COMPANY_ID,
-                "secret_key_prefix": SECRET_KEY[:20] + "..."
-            }
-        }
-        
-        print(f"Resultado do teste: {result}")
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        return jsonify({
-            "error": True,
-            "message": f"Erro no teste: {str(e)}"
-        }), 500
-
-@app.route('/')
-def home():
-    return jsonify({
-        "message": "API Rio Bonito SOS",
-        "version": "1.0.0",
-        "endpoints": {
-            "health": "/health (GET)",
-            "create_payment": "/create-payment (POST)",
-            "test_ghostpay": "/test-ghostpay (GET)"
-        }
-    })
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({"message": "API funcionando!", "status": "OK"})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
