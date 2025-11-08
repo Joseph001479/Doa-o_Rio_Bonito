@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# Configurações da API GhostPay - VERIFIQUE ESTAS CREDENCIAIS!
+# Configurações da API GhostPay
 GHOSTPAY_URL = "https://api.ghostspaysv2.com/functions/v1/transactions"
 SECRET_KEY = "sk_live_4rcXnqQ6KL4dJ2lW0gZxh9lCj5tm99kYMCk0i57KocSKGGD4"
 COMPANY_ID = "43fc8053-d32c-4d37-bf93-33046dd7215b"
@@ -49,7 +49,7 @@ def create_payment():
                 "message": "Valor mínimo é R$ 10,00 (1000 centavos)"
             }), 400
         
-        # Preparar payload para GhostPay
+        # ✅ CORREÇÃO: Preparar payload CORRETO para GhostPay com campo pix
         payload = {
             "paymentMethod": "PIX",
             "customer": {
@@ -69,7 +69,9 @@ def create_payment():
             "metadata": {
                 "campaign": "rio-bonito-sos",
                 "source": "website"
-            }
+            },
+            # ✅ CAMPO OBRIGATÓRIO PARA PIX - objeto vazio
+            "pix": {}
         }
         
         # Adicionar CPF se fornecido
@@ -87,7 +89,7 @@ def create_payment():
         print(f"URL: {GHOSTPAY_URL}")
         print(f"Secret Key (primeiros 20 chars): {SECRET_KEY[:20]}...")
         print(f"Company ID: {COMPANY_ID}")
-        print(f"Payload: {payload}")
+        print(f"Payload COMPLETO: {payload}")
         
         # Fazer requisição para GhostPay
         response = requests.post(
@@ -119,6 +121,15 @@ def create_payment():
                     "resposta_ghostpay": response.text
                 }
             }), 401
+        elif response.status_code == 422:
+            return jsonify({
+                "error": True,
+                "message": "ERRO 422 - DADOS INVÁLIDOS",
+                "details": {
+                    "resposta_ghostpay": response.text,
+                    "payload_enviado": payload
+                }
+            }), 422
         else:
             return jsonify({
                 "error": True,
@@ -133,11 +144,11 @@ def create_payment():
             "message": f"Erro interno: {str(e)}"
         }), 500
 
-@app.route('/test-auth', methods=['GET'])
-def test_auth():
-    """Rota para testar autenticação com GhostPay"""
+@app.route('/test-pix', methods=['GET'])
+def test_pix():
+    """Rota para testar PIX com payload CORRETO"""
     try:
-        # Payload de teste mínimo
+        # ✅ Payload CORRETO com campo pix obrigatório
         test_payload = {
             "paymentMethod": "PIX",
             "customer": {
@@ -146,14 +157,20 @@ def test_auth():
             },
             "items": [
                 {
-                    "title": "Teste de Autenticação",
+                    "title": "Teste de Doação PIX",
                     "unitPrice": 1000,
                     "quantity": 1,
-                    "externalRef": "test-auth-001"
+                    "externalRef": "test-pix-001"
                 }
             ],
             "amount": 1000,
-            "description": "Teste de autenticação GhostPay"
+            "description": "Teste de doação via PIX",
+            "metadata": {
+                "campaign": "teste",
+                "source": "api-test"
+            },
+            # ✅ CAMPO OBRIGATÓRIO PARA PIX
+            "pix": {}
         }
         
         headers = {
@@ -162,7 +179,7 @@ def test_auth():
             'X-Company-ID': COMPANY_ID
         }
         
-        print("=== TESTE DE AUTENTICAÇÃO GHOSTPAY ===")
+        print("=== TESTE PIX COM PAYLOAD CORRETO ===")
         print(f"Secret Key: {SECRET_KEY[:20]}...")
         print(f"Company ID: {COMPANY_ID}")
         print(f"Payload Teste: {test_payload}")
@@ -182,7 +199,8 @@ def test_auth():
                 "company_id": COMPANY_ID,
                 "secret_key_prefix": SECRET_KEY[:20] + "..."
             },
-            "diagnostico": "SUCESSO" if response.status_code == 201 else "FALHA NA AUTENTICAÇÃO"
+            "payload_enviado": test_payload,
+            "diagnostico": "SUCESSO" if response.status_code == 201 else f"FALHA - {response.status_code}"
         }
         
         print(f"Resultado do teste: {result}")
@@ -197,7 +215,7 @@ def test_auth():
 
 @app.route('/debug-credentials', methods=['GET'])
 def debug_credentials():
-    """Mostra informações das credenciais (sem revelar a chave completa)"""
+    """Mostra informações das credenciais"""
     return jsonify({
         "secret_key_length": len(SECRET_KEY),
         "company_id": COMPANY_ID,
@@ -214,7 +232,7 @@ def home():
         "endpoints": {
             "health": "/health (GET)",
             "create_payment": "/create-payment (POST)",
-            "test_auth": "/test-auth (GET)",
+            "test_pix": "/test-pix (GET)",
             "debug_credentials": "/debug-credentials (GET)"
         }
     })
