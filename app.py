@@ -4,9 +4,9 @@ import requests
 import os
 
 app = Flask(__name__)
-CORS(app)  # Isso resolve CORS para SEU frontend
+CORS(app)
 
-# Configurações da API GhostPay
+# Configurações da API GhostPay - VERIFIQUE ESTAS CREDENCIAIS!
 GHOSTPAY_URL = "https://api.ghostspaysv2.com/functions/v1/transactions"
 SECRET_KEY = "sk_live_4rcXnqQ6KL4dJ2lW0gZxh9lCj5tm99kYMCk0i57KocSKGGD4"
 COMPANY_ID = "43fc8053-d32c-4d37-bf93-33046dd7215b"
@@ -85,9 +85,11 @@ def create_payment():
         
         print("=== ENVIANDO PARA GHOSTPAY ===")
         print(f"URL: {GHOSTPAY_URL}")
+        print(f"Secret Key (primeiros 20 chars): {SECRET_KEY[:20]}...")
+        print(f"Company ID: {COMPANY_ID}")
         print(f"Payload: {payload}")
         
-        # Fazer requisição para GhostPay (AGORA DO BACKEND, SEM CORS!)
+        # Fazer requisição para GhostPay
         response = requests.post(
             GHOSTPAY_URL,
             json=payload,
@@ -96,11 +98,27 @@ def create_payment():
         )
         
         print("=== RESPOSTA GHOSTPAY ===")
-        print(f"Status: {response.status_code}")
-        print(f"Resposta: {response.text}")
+        print(f"Status Code: {response.status_code}")
+        print(f"Response Text: {response.text}")
         
         if response.status_code == 201:
             return jsonify(response.json()), 201
+        elif response.status_code == 401:
+            return jsonify({
+                "error": True,
+                "message": "ERRO 401 - AUTENTICAÇÃO FALHOU",
+                "details": {
+                    "possiveis_causas": [
+                        "Secret Key inválida ou expirada",
+                        "Company ID incorreto", 
+                        "API Key não está ativa",
+                        "Ambiente de produção/sandbox incorreto"
+                    ],
+                    "secret_key_prefix": SECRET_KEY[:20] + "...",
+                    "company_id": COMPANY_ID,
+                    "resposta_ghostpay": response.text
+                }
+            }), 401
         else:
             return jsonify({
                 "error": True,
@@ -109,15 +127,97 @@ def create_payment():
             }), response.status_code
             
     except Exception as e:
-        print(f"ERRO: {str(e)}")
+        print(f"ERRO INTERNO: {str(e)}")
         return jsonify({
             "error": True,
             "message": f"Erro interno: {str(e)}"
         }), 500
 
-@app.route('/test', methods=['GET'])
-def test():
-    return jsonify({"message": "API funcionando!", "status": "OK"})
+@app.route('/test-auth', methods=['GET'])
+def test_auth():
+    """Rota para testar autenticação com GhostPay"""
+    try:
+        # Payload de teste mínimo
+        test_payload = {
+            "paymentMethod": "PIX",
+            "customer": {
+                "name": "João Silva Teste",
+                "email": "joao.teste@email.com"
+            },
+            "items": [
+                {
+                    "title": "Teste de Autenticação",
+                    "unitPrice": 1000,
+                    "quantity": 1,
+                    "externalRef": "test-auth-001"
+                }
+            ],
+            "amount": 1000,
+            "description": "Teste de autenticação GhostPay"
+        }
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {SECRET_KEY}',
+            'X-Company-ID': COMPANY_ID
+        }
+        
+        print("=== TESTE DE AUTENTICAÇÃO GHOSTPAY ===")
+        print(f"Secret Key: {SECRET_KEY[:20]}...")
+        print(f"Company ID: {COMPANY_ID}")
+        print(f"Payload Teste: {test_payload}")
+        
+        response = requests.post(
+            GHOSTPAY_URL,
+            json=test_payload,
+            headers=headers,
+            timeout=30
+        )
+        
+        result = {
+            "status_code": response.status_code,
+            "ghostpay_response": response.text,
+            "credentials_info": {
+                "secret_key_length": len(SECRET_KEY),
+                "company_id": COMPANY_ID,
+                "secret_key_prefix": SECRET_KEY[:20] + "..."
+            },
+            "diagnostico": "SUCESSO" if response.status_code == 201 else "FALHA NA AUTENTICAÇÃO"
+        }
+        
+        print(f"Resultado do teste: {result}")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            "error": True,
+            "message": f"Erro no teste: {str(e)}"
+        }), 500
+
+@app.route('/debug-credentials', methods=['GET'])
+def debug_credentials():
+    """Mostra informações das credenciais (sem revelar a chave completa)"""
+    return jsonify({
+        "secret_key_length": len(SECRET_KEY),
+        "company_id": COMPANY_ID,
+        "secret_key_prefix": SECRET_KEY[:20] + "...",
+        "ghostpay_url": GHOSTPAY_URL,
+        "status": "Configurado"
+    })
+
+@app.route('/')
+def home():
+    return jsonify({
+        "message": "API Rio Bonito SOS",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health (GET)",
+            "create_payment": "/create-payment (POST)",
+            "test_auth": "/test-auth (GET)",
+            "debug_credentials": "/debug-credentials (GET)"
+        }
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
