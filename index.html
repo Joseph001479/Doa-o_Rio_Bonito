@@ -1402,15 +1402,13 @@
     </a>
     
     <script>
-        // ✅ SOLUÇÃO PROFISSIONAL PARA CORS
-        // Usando Google Apps Script como proxy (gratuito e fácil)
-        const PROXY_URL = 'https://script.google.com/macros/s/AKfycbwQk1T_nIOh7J6_9J7ZQYv8Q8X9Q9bQq-9qj-9qj-9qj-9qj-9qj-9qj/exec';
+        // ✅ CONFIGURAÇÃO DA API NO RENDER
+        // SUBSTITUA PELA URL DO SEU DEPLOY NO RENDER
+        const API_BASE_URL = 'https://seu-app.onrender.com';
         
         // Configurações
-        const API_CONFIG = {
-            proxyUrl: PROXY_URL,
-            secretKey: 'sk_live_4rcXnqQ6KL4dJ2lW0gZxh9lCj5tm99kYMCk0i57KocSKGGD4',
-            companyId: '43fc8053-d32c-4d37-bf93-33046dd7215b'
+        const CONFIG = {
+            apiUrl: API_BASE_URL
         };
 
         // Variáveis globais
@@ -1535,35 +1533,88 @@
             }
         });
 
-        // Seleção de valor
-        const valorOptions = document.querySelectorAll('.valor-option');
-        const customAmount = document.getElementById('customAmount');
-        const btnProcessarDoacao = document.getElementById('btnProcessarDoacao');
+        // ✅ FUNÇÃO PARA CRIAR PAGAMENTO
+        async function createPayment(paymentData) {
+            const requestBody = {
+                customer: {
+                    name: paymentData.customer.name,
+                    email: paymentData.customer.email,
+                    ...(paymentData.customer.document && { document: paymentData.customer.document })
+                },
+                amount: paymentData.amount,
+                description: paymentData.description
+            };
 
-        valorOptions.forEach(option => {
-            option.addEventListener('click', function() {
-                valorOptions.forEach(opt => opt.classList.remove('selected'));
-                this.classList.add('selected');
-                customAmount.value = '';
-                selectedAmount = parseInt(this.dataset.value);
-                updateDonationButton();
+            console.log('Enviando para API:', requestBody);
+
+            const response = await fetch(`${CONFIG.apiUrl}/create-payment`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody)
             });
-        });
 
-        customAmount.addEventListener('input', function() {
-            valorOptions.forEach(opt => opt.classList.remove('selected'));
-            const value = parseFloat(this.value);
-            selectedAmount = value >= 10 ? Math.round(value * 100) : 0;
-            updateDonationButton();
-        });
-
-        function updateDonationButton() {
-            const isValid = selectedAmount >= 1000;
-            btnProcessarDoacao.disabled = !isValid;
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.message || `Erro ${response.status}`);
+            }
+            
+            return data;
         }
 
-        // ✅ FUNÇÃO PRINCIPAL DE PAGAMENTO
-        btnProcessarDoacao.addEventListener('click', async function() {
+        // ✅ FUNÇÃO PARA MOSTRAR PIX
+        function showPixPayment(paymentResponse) {
+            document.getElementById('loading').style.display = 'none';
+            
+            if (paymentResponse.pix && paymentResponse.pix.qrCode) {
+                currentPixCode = paymentResponse.pix.qrCode;
+                currentTransactionId = paymentResponse.id;
+                
+                // Gerar QR Code visual
+                const qrcodeElement = document.getElementById('qrcodeImage');
+                qrcodeElement.innerHTML = '';
+                
+                QRCode.toCanvas(qrcodeElement, currentPixCode, {
+                    width: 200,
+                    height: 200,
+                    colorDark: "#0a2463",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                }, function(error) {
+                    if (error) {
+                        console.error('Erro ao gerar QR Code:', error);
+                        qrcodeElement.innerHTML = '<p style="color: #666; padding: 20px;">Use o código PIX abaixo</p>';
+                    }
+                });
+                
+                document.getElementById('pixCode').textContent = currentPixCode;
+                document.getElementById('pixQrCode').style.display = 'block';
+                
+            } else {
+                throw new Error('Dados PIX não recebidos da API');
+            }
+        }
+
+        // ✅ FUNÇÃO PARA COPIAR CÓDIGO PIX
+        function copyPixCode() {
+            navigator.clipboard.writeText(currentPixCode).then(() => {
+                alert('Código PIX copiado para a área de transferência!');
+            }).catch(() => {
+                // Fallback para navegadores antigos
+                const textArea = document.createElement('textarea');
+                textArea.value = currentPixCode;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Código PIX copiado!');
+            });
+        }
+
+        // ✅ PROCESSAR DOAÇÃO (função principal)
+        async function processarDoacao() {
             const name = document.getElementById('customerName').value.trim();
             const email = document.getElementById('customerEmail').value.trim();
             const cpf = document.getElementById('customerCPF').value.trim();
@@ -1603,136 +1654,12 @@
                 alert('Erro ao processar doação: ' + error.message);
                 resetDonationForm();
             }
-        });
-
-        // ✅ FUNÇÃO PARA CRIAR PAGAMENTO (COM PROXY)
-        async function createPayment(paymentData) {
-            const requestBody = {
-                secretKey: API_CONFIG.secretKey,
-                companyId: API_CONFIG.companyId,
-                customer: paymentData.customer,
-                amount: paymentData.amount,
-                description: paymentData.description
-            };
-
-            console.log('Enviando para proxy:', requestBody);
-
-            const response = await fetch(API_CONFIG.proxyUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestBody)
-            });
-
-            if (!response.ok) {
-                throw new Error(`Erro no servidor: ${response.status}`);
-            }
-
-            const data = await response.json();
-            
-            if (data.error) {
-                throw new Error(data.message || 'Erro na API de pagamento');
-            }
-            
-            return data;
         }
 
-        // ✅ FUNÇÃO PARA MOSTRAR PIX
-        function showPixPayment(paymentResponse) {
-            document.getElementById('loading').style.display = 'none';
-            
-            if (paymentResponse.pix && paymentResponse.pix.qrCode) {
-                currentPixCode = paymentResponse.pix.qrCode;
-                currentTransactionId = paymentResponse.id;
-                
-                // Gerar QR Code visual
-                const qrcodeElement = document.getElementById('qrcodeImage');
-                qrcodeElement.innerHTML = '';
-                
-                QRCode.toCanvas(qrcodeElement, currentPixCode, {
-                    width: 200,
-                    height: 200,
-                    colorDark: "#0a2463",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.H
-                }, function(error) {
-                    if (error) {
-                        console.error('Erro ao gerar QR Code:', error);
-                        qrcodeElement.innerHTML = '<p style="color: #666; padding: 20px;">QR Code indisponível - Use o código PIX abaixo</p>';
-                    }
-                });
-                
-                document.getElementById('pixCode').textContent = currentPixCode;
-                document.getElementById('pixQrCode').style.display = 'block';
-                
-                // Iniciar verificação de status
-                startPaymentStatusCheck();
-                
-            } else {
-                throw new Error('Dados PIX não recebidos da API');
-            }
-        }
-
-        // ✅ FUNÇÃO PARA VERIFICAR STATUS (SIMULAÇÃO)
-        function startPaymentStatusCheck() {
-            let checks = 0;
-            const maxChecks = 180; // 15 minutos (5s * 180 = 900s)
-            
-            const checkInterval = setInterval(() => {
-                checks++;
-                
-                // Simular pagamento confirmado após 30 segundos (apenas para demo)
-                if (checks === 6) { // 6 * 5s = 30s
-                    clearInterval(checkInterval);
-                    showSuccessMessage();
-                }
-                
-                // Parar após 15 minutos
-                if (checks >= maxChecks) {
-                    clearInterval(checkInterval);
-                    console.log('Verificação de status encerrada');
-                }
-            }, 5000);
-        }
-
-        // ✅ COPIAR CÓDIGO PIX
-        function copyPixCode() {
-            navigator.clipboard.writeText(currentPixCode).then(() => {
-                alert('Código PIX copiado para a área de transferência!');
-            }).catch(() => {
-                // Fallback para navegadores antigos
-                const textArea = document.createElement('textarea');
-                textArea.value = currentPixCode;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                alert('Código PIX copiado!');
-            });
-        }
-
-        // ✅ MOSTRAR MENSAGEM DE SUCESSO
-        function showSuccessMessage() {
-            document.getElementById('pixQrCode').style.display = 'none';
-            document.getElementById('successMessage').style.display = 'block';
-            
-            // Atualizar estatísticas locais
-            updateLocalStats(selectedAmount);
-        }
-
-        // ✅ ATUALIZAR ESTATÍSTICAS LOCAIS
-        function updateLocalStats(amount) {
-            // Converter para reais
-            const amountInReais = amount / 100;
-            
-            // Atualizar contador de arrecadações (apenas visual)
-            const stats = document.querySelectorAll('.stat-number');
-            if (stats[2]) {
-                const currentAmount = parseFloat(stats[2].textContent.replace('R$ ', '').replace('K', ''));
-                const newAmount = currentAmount + (amountInReais / 1000);
-                stats[2].textContent = `R$ ${newAmount.toFixed(1)}K`;
-            }
+        // ✅ ATUALIZAR BOTÃO DE DOAÇÃO
+        function updateDonationButton() {
+            const isValid = selectedAmount >= 1000;
+            document.getElementById('btnProcessarDoacao').disabled = !isValid;
         }
 
         // ✅ RESETAR FORMULÁRIO
@@ -1742,21 +1669,38 @@
             document.getElementById('pixQrCode').style.display = 'none';
             document.getElementById('successMessage').style.display = 'none';
             
-            valorOptions.forEach(opt => opt.classList.remove('selected'));
-            customAmount.value = '';
+            document.querySelectorAll('.valor-option').forEach(opt => opt.classList.remove('selected'));
+            document.getElementById('customAmount').value = '';
             selectedAmount = 0;
             updateDonationButton();
-            
-            // Manter dados do usuário (opcional)
-            // document.getElementById('customerName').value = '';
-            // document.getElementById('customerEmail').value = '';
-            // document.getElementById('customerCPF').value = '';
         }
 
         // ✅ INICIALIZAÇÃO
         document.addEventListener('DOMContentLoaded', function() {
+            // Configurar botões de valor
+            document.querySelectorAll('.valor-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    document.querySelectorAll('.valor-option').forEach(opt => opt.classList.remove('selected'));
+                    this.classList.add('selected');
+                    document.getElementById('customAmount').value = '';
+                    selectedAmount = parseInt(this.dataset.value);
+                    updateDonationButton();
+                });
+            });
+
+            // Configurar input personalizado
+            document.getElementById('customAmount').addEventListener('input', function() {
+                document.querySelectorAll('.valor-option').forEach(opt => opt.classList.remove('selected'));
+                const value = parseFloat(this.value);
+                selectedAmount = value >= 10 ? Math.round(value * 100) : 0;
+                updateDonationButton();
+            });
+
+            // Configurar botão de processar
+            document.getElementById('btnProcessarDoacao').addEventListener('click', processarDoacao);
+
             console.log('Rio Bonito SOS - Sistema de Doações Carregado');
-            console.log('Configure o PROXY_URL no JavaScript para a URL do seu Google Apps Script');
+            console.log('Configure a API_BASE_URL com a URL do seu deploy no Render');
         });
     </script>
 </body>
