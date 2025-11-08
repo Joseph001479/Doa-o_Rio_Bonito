@@ -4,6 +4,7 @@ import requests
 import os
 import base64
 import time
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -19,6 +20,16 @@ COMPANY_ID = "43fc8053-d32c-4d37-bf93-33046dd7215b"
 # Basic Auth encoding (como mostrado na documentação)
 auth_string = f"{SECRET_KEY}:"
 basic_auth = base64.b64encode(auth_string.encode()).decode()
+
+# =============================================================================
+# FUNÇÕES AUXILIARES
+# =============================================================================
+
+def clean_document(document):
+    """Limpa CPF/CNPJ - remove caracteres não numéricos (equivalente a /\D/g em JS)"""
+    if document:
+        return re.sub(r'\D', '', document)
+    return "00000000191"
 
 # =============================================================================
 # ROTAS PRINCIPAIS
@@ -71,7 +82,7 @@ def create_payment():
                 # ✅ ADICIONAR CAMPOS OPCIONAIS QUE EVITAM ERROS
                 "phone": customer.get('phone', '11999999999'),  # Default para evitar erro
                 "document": {
-                    "number": customer.get('document', '00000000191').replace(/\D/g, ''),
+                    "number": clean_document(customer.get('document')),  # ✅ CORRIGIDO - função Python
                     "type": "CPF"
                 }
             },
@@ -101,7 +112,7 @@ def create_payment():
         
         print("=== ENVIANDO PARA GHOSTPAY ===")
         print(f"URL: {GHOSTPAY_URL}")
-        print(f"Headers: {headers}")
+        print(f"Headers: {dict(headers)}")  # ✅ Convertendo para dict para print seguro
         print(f"Payload: {payload}")
         
         # Fazer requisição para GhostPay
@@ -119,11 +130,16 @@ def create_payment():
         if response.status_code == 201:
             return jsonify(response.json()), 201
         else:
-            error_response = response.json() if response.text else {}
+            try:
+                error_response = response.json()
+                error_details = error_response.get('refusedReason', {}).get('description', response.text)
+            except:
+                error_details = response.text
+                
             return jsonify({
                 "error": True,
                 "message": f"Erro na API GhostPay: {response.status_code}",
-                "details": error_response.get('refusedReason', {}).get('description', response.text),
+                "details": error_details,
                 "status_code": response.status_code
             }), response.status_code
             
@@ -187,7 +203,8 @@ def test_pix_complete():
             "status_code": response.status_code,
             "success": response.status_code == 201,
             "response": response.json() if response.text else {},
-            "diagnostico": "✅ FUNCIONOU" if response.status_code == 201 else "❌ FALHOU"
+            "diagnostico": "✅ FUNCIONOU" if response.status_code == 201 else "❌ FALHOU",
+            "ghostpay_message": response.text[:200] if response.text else "Sem resposta"
         }
         
         return jsonify(result)
@@ -205,21 +222,33 @@ def debug_headers():
         "authorization_header": f"Basic {basic_auth}",
         "secret_key": SECRET_KEY[:20] + "...",
         "company_id": COMPANY_ID,
-        "ghostpay_url": GHOSTPAY_URL
+        "ghostpay_url": GHOSTPAY_URL,
+        "status": "Configurado - Sem erros de sintaxe"
+    })
+
+@app.route('/test', methods=['GET'])
+def test():
+    """Endpoint de teste básico"""
+    return jsonify({
+        "message": "API funcionando!",
+        "status": "OK",
+        "timestamp": time.time()
     })
 
 @app.route('/')
 def home():
     return jsonify({
-        "message": "API Rio Bonito SOS - Sistema Corrigido",
-        "version": "3.0.0",
-        "status": "Operacional",
+        "message": "API Rio Bonito SOS - Sistema Corrigido ✅",
+        "version": "3.1.0",
+        "status": "Operacional - Sem erros de sintaxe",
         "endpoints": {
             "health": "/health (GET)",
+            "test": "/test (GET)",
             "create_payment": "/create-payment (POST)",
             "test_pix": "/test-pix-complete (GET)",
             "debug": "/debug-headers (GET)"
-        }
+        },
+        "notes": "Erro de sintaxe resolvido - código 100% Python"
     })
 
 if __name__ == '__main__':
