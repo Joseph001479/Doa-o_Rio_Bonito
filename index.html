@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rio Bonito SOS 🌪️ | Reconstruindo Vidas com Solidariedade</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <style>
+        /* [TODO O CSS ANTERIOR PERMANECE EXATAMENTE IGUAL] */
         /* Reset e variáveis */
         :root {
             --azul-premium: #0a2463;
@@ -145,14 +145,14 @@
                         url('https://images.unsplash.com/photo-1593113630400-ea4288922497?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
             background-size: cover;
             background-position: center;
-            background-attachment: scroll; /* CORREÇÃO: removido fixed para mobile */
+            background-attachment: scroll;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
             color: var(--branco);
-            padding: 80px 20px 40px; /* CORREÇÃO: padding-top para header fixo */
+            padding: 80px 20px 40px;
             position: relative;
         }
         
@@ -951,7 +951,7 @@
             }
             
             .hero-vip {
-                background-attachment: scroll; /* Remove parallax no mobile */
+                background-attachment: scroll;
                 padding: 70px 15px 30px;
             }
             
@@ -1655,46 +1655,79 @@
             return data;
         }
 
-        // ✅ FUNÇÃO DEFINITIVA PARA GERAR QR CODE (SOLUÇÃO 100% LOCAL)
+        // ✅ SOLUÇÃO DEFINITIVA PARA QR CODE - MÚLTIPLAS ESTRATÉGIAS
         function generateQRCode(pixCode, elementId) {
             const qrcodeElement = document.getElementById(elementId);
             qrcodeElement.innerHTML = '';
             
-            // ✅ VERIFICAR SE A BIBLIOTECA QRCode ESTÁ DISPONÍVEL
-            if (typeof QRCode !== 'undefined') {
-                console.log("✅ Biblioteca QRCode disponível, gerando QR Code localmente...");
-                
-                try {
-                    QRCode.toCanvas(qrcodeElement, pixCode, {
-                        width: 180,
-                        height: 180,
-                        colorDark: "#0a2463",
-                        colorLight: "#ffffff",
-                        correctLevel: QRCode.CorrectLevel.H
-                    }, function(error) {
-                        if (error) {
-                            console.error('❌ Erro ao gerar QR Code local:', error);
-                            showPixCodeOnly(pixCode, qrcodeElement);
-                        } else {
-                            console.log("✅ QR Code gerado com sucesso localmente!");
-                        }
-                    });
-                } catch (error) {
-                    console.error("❌ Erro na geração local do QR Code:", error);
-                    showPixCodeOnly(pixCode, qrcodeElement);
-                }
-            } else {
-                console.error("❌ Biblioteca QRCode não disponível");
-                showPixCodeOnly(pixCode, qrcodeElement);
-            }
+            console.log("🔄 Tentando gerar QR Code para:", pixCode.substring(0, 50) + "...");
+            
+            // ✅ ESTRATÉGIA 1: Usar API externa confiável
+            const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pixCode)}&color=0A2463&bgcolor=FFFFFF&margin=10`;
+            
+            const img = document.createElement('img');
+            img.src = qrCodeUrl;
+            img.alt = 'QR Code PIX';
+            img.style.maxWidth = '180px';
+            img.style.border = '1px solid #e0e0e0';
+            img.style.borderRadius = '8px';
+            img.onload = function() {
+                console.log("✅ QR Code gerado com sucesso via API externa!");
+            };
+            img.onerror = function() {
+                console.log("❌ API externa falhou, tentando biblioteca local...");
+                tryLocalQRCode(pixCode, qrcodeElement);
+            };
+            
+            qrcodeElement.appendChild(img);
         }
 
-        // ✅ FUNÇÃO PARA MOSTRAR APENAS CÓDIGO PIX (FALLBACK)
+        // ✅ ESTRATÉGIA 2: Biblioteca local como fallback
+        function tryLocalQRCode(pixCode, element) {
+            // Tentar carregar biblioteca QRCode dinamicamente
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';
+            script.onload = function() {
+                console.log("✅ Biblioteca QRCode carregada, gerando QR Code local...");
+                if (typeof QRCode !== 'undefined') {
+                    try {
+                        QRCode.toCanvas(element, pixCode, {
+                            width: 180,
+                            height: 180,
+                            colorDark: "#0a2463",
+                            colorLight: "#ffffff",
+                            correctLevel: QRCode.CorrectLevel.H
+                        }, function(error) {
+                            if (error) {
+                                console.error('❌ Erro ao gerar QR Code local:', error);
+                                showPixCodeOnly(pixCode, element);
+                            } else {
+                                console.log("✅ QR Code gerado com sucesso localmente!");
+                            }
+                        });
+                    } catch (error) {
+                        console.error("❌ Erro na geração local:", error);
+                        showPixCodeOnly(pixCode, element);
+                    }
+                } else {
+                    showPixCodeOnly(pixCode, element);
+                }
+            };
+            script.onerror = function() {
+                console.error("❌ Não foi possível carregar a biblioteca QRCode");
+                showPixCodeOnly(pixCode, element);
+            };
+            document.head.appendChild(script);
+        }
+
+        // ✅ ESTRATÉGIA 3: Mostrar apenas código PIX como último recurso
         function showPixCodeOnly(pixCode, element) {
+            console.log("ℹ️ Mostrando apenas código PIX (fallback)");
             element.innerHTML = `
                 <div style="padding: 15px; text-align: center;">
-                    <p style="color: #666; margin-bottom: 10px; font-size: 0.9rem;">QR Code não disponível. Use o código PIX abaixo:</p>
+                    <p style="color: #666; margin-bottom: 10px; font-size: 0.9rem;">Use o código PIX abaixo no seu aplicativo bancário:</p>
                     <div class="pix-codigo">${pixCode}</div>
+                    <p style="margin-top: 10px; font-size: 0.8rem; color: #666;">Copie este código e cole no app do seu banco</p>
                 </div>
             `;
         }
@@ -1729,7 +1762,7 @@
                 console.log("✅ Código PIX recebido:", currentPixCode.substring(0, 50) + "...");
                 console.log("✅ Transaction ID:", currentTransactionId);
                 
-                // ✅ USAR NOSSA FUNÇÃO DEFINITIVA PARA GERAR QR CODE LOCALMENTE
+                // ✅ USAR NOSSA SOLUÇÃO DEFINITIVA PARA GERAR QR CODE
                 generateQRCode(currentPixCode, 'qrcodeImage');
                 
                 document.getElementById('pixCode').textContent = currentPixCode;
@@ -1846,8 +1879,8 @@
             console.log('✅ Rio Bonito SOS - Sistema 100% Profissional!');
             console.log('✅ API: https://doa-o-rio-bonito.onrender.com');
             console.log('✅ Responsividade Perfeita!');
-            console.log('✅ QR Code Funcional!');
+            console.log('✅ QR Code - Solução Definitiva Implementada!');
         });
     </script>
 </body>
-    </html>
+                            </html>
