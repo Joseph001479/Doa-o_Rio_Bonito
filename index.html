@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rio Bonito SOS 🌪️ | Reconstruindo Vidas com Solidariedade Premium</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- INCLUINDO BIBLIOTECA QR CODE -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <style>
         /* Reset e variáveis */
         :root {
@@ -1583,75 +1585,37 @@
             return data;
         }
 
-        // ✅ FUNÇÃO DEFINITIVA PARA MOSTRAR PIX (USANDO URL DO QR CODE PRONTA)
-        function showPixPayment(paymentResponse) {
-            document.getElementById('loading').style.display = 'none';
+        // ✅ FUNÇÃO DEFINITIVA PARA GERAR QR CODE (SOLUÇÃO 100% LOCAL)
+        function generateQRCode(pixCode, elementId) {
+            const qrcodeElement = document.getElementById(elementId);
+            qrcodeElement.innerHTML = '';
             
-            console.log("=== RESPOSTA COMPLETA DA GHOSTPAY ===");
-            console.log(paymentResponse);
-            
-            // ✅ VERIFICAR DIFERENTES ESTRUTURAS POSSÍVEIS
-            let pixData = null;
-            let qrCodeUrl = null;
-            let qrCodeText = null;
-            
-            if (paymentResponse.pix) {
-                // Estrutura: paymentResponse.pix.qrcode (URL do QR Code PRONTO)
-                pixData = paymentResponse.pix;
-                console.log("✅ Dados PIX encontrados em paymentResponse.pix");
+            // ✅ VERIFICAR SE A BIBLIOTECA QRCode ESTÁ DISPONÍVEL
+            if (typeof QRCode !== 'undefined') {
+                console.log("✅ Biblioteca QRCode disponível, gerando QR Code localmente...");
                 
-                // ✅ CORREÇÃO DEFINITIVA: GhostPay retorna URL do QR Code pronta!
-                if (pixData.qrcode && typeof pixData.qrcode === 'string') {
-                    qrCodeUrl = pixData.qrcode;
-                    console.log("✅ URL do QR Code encontrada em pix.qrcode:", qrCodeUrl);
+                try {
+                    QRCode.toCanvas(qrcodeElement, pixCode, {
+                        width: 200,
+                        height: 200,
+                        colorDark: "#0a2463",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.H
+                    }, function(error) {
+                        if (error) {
+                            console.error('❌ Erro ao gerar QR Code local:', error);
+                            showPixCodeOnly(pixCode, qrcodeElement);
+                        } else {
+                            console.log("✅ QR Code gerado com sucesso localmente!");
+                        }
+                    });
+                } catch (error) {
+                    console.error("❌ Erro na geração local do QR Code:", error);
+                    showPixCodeOnly(pixCode, qrcodeElement);
                 }
-                
-                // ✅ Código PIX para copiar e colar
-                if (pixData.qrcodeText) {
-                    qrCodeText = pixData.qrcodeText;
-                    console.log("✅ Código PIX para copiar encontrado em pix.qrcodeText");
-                }
-            }
-            
-            if (qrCodeUrl || qrCodeText) {
-                currentPixCode = qrCodeText || qrCodeUrl;
-                currentTransactionId = paymentResponse.id;
-                
-                console.log("✅ QR Code URL:", qrCodeUrl);
-                console.log("✅ QR Code Text:", qrCodeText);
-                console.log("✅ Transaction ID:", currentTransactionId);
-                
-                // ✅ EXIBIR QR CODE PRONTO DA GHOSTPAY
-                const qrcodeElement = document.getElementById('qrcodeImage');
-                qrcodeElement.innerHTML = '';
-                
-                if (qrCodeUrl) {
-                    console.log("✅ Exibindo QR Code pronto da GhostPay...");
-                    const img = document.createElement('img');
-                    img.src = qrCodeUrl;
-                    img.alt = 'QR Code PIX';
-                    img.style.maxWidth = '200px';
-                    img.style.border = '1px solid #e0e0e0';
-                    img.style.borderRadius = '10px';
-                    img.onload = function() {
-                        console.log("✅ QR Code carregado com sucesso!");
-                    };
-                    img.onerror = function() {
-                        console.error("❌ Erro ao carregar QR Code da GhostPay");
-                        showPixCodeOnly(qrCodeText || qrCodeUrl, qrcodeElement);
-                    };
-                    qrcodeElement.appendChild(img);
-                } else {
-                    console.log("❌ URL do QR Code não disponível, mostrando apenas código PIX");
-                    showPixCodeOnly(qrCodeText, qrcodeElement);
-                }
-                
-                document.getElementById('pixCode').textContent = qrCodeText || qrCodeUrl;
-                document.getElementById('pixQrCode').style.display = 'block';
-                
             } else {
-                console.error("❌ Estrutura PIX não encontrada:", paymentResponse);
-                throw new Error('Dados PIX não recebidos da API');
+                console.error("❌ Biblioteca QRCode não disponível");
+                showPixCodeOnly(pixCode, qrcodeElement);
             }
         }
 
@@ -1663,6 +1627,48 @@
                     <div class="pix-codigo">${pixCode}</div>
                 </div>
             `;
+        }
+
+        // ✅ FUNÇÃO CORRIGIDA PARA MOSTRAR PIX
+        function showPixPayment(paymentResponse) {
+            document.getElementById('loading').style.display = 'none';
+            
+            console.log("=== RESPOSTA COMPLETA DA GHOSTPAY ===");
+            console.log(paymentResponse);
+            
+            // ✅ VERIFICAR DIFERENTES ESTRUTURAS POSSÍVEIS
+            let pixData = null;
+            let qrCode = null;
+            
+            if (paymentResponse.pix) {
+                // Estrutura: paymentResponse.pix.qrcode (CÓDIGO PIX para copiar)
+                pixData = paymentResponse.pix;
+                console.log("✅ Dados PIX encontrados em paymentResponse.pix");
+                
+                // ✅ CORREÇÃO DEFINITIVA: GhostPay retorna CÓDIGO PIX no campo qrcode
+                if (pixData.qrcode) {
+                    qrCode = pixData.qrcode;
+                    console.log("✅ Código PIX encontrado em pix.qrcode");
+                }
+            }
+            
+            if (qrCode) {
+                currentPixCode = qrCode;
+                currentTransactionId = paymentResponse.id;
+                
+                console.log("✅ Código PIX recebido:", currentPixCode.substring(0, 50) + "...");
+                console.log("✅ Transaction ID:", currentTransactionId);
+                
+                // ✅ USAR NOSSA FUNÇÃO DEFINITIVA PARA GERAR QR CODE LOCALMENTE
+                generateQRCode(currentPixCode, 'qrcodeImage');
+                
+                document.getElementById('pixCode').textContent = currentPixCode;
+                document.getElementById('pixQrCode').style.display = 'block';
+                
+            } else {
+                console.error("❌ Estrutura PIX não encontrada:", paymentResponse);
+                throw new Error('Dados PIX não recebidos da API');
+            }
         }
 
         // ✅ FUNÇÃO PARA COPIAR CÓDIGO PIX
@@ -1770,8 +1776,8 @@
             console.log('✅ Rio Bonito SOS - Sistema 100% Funcional!');
             console.log('✅ API: https://doa-o-rio-bonito.onrender.com');
             console.log('✅ CORS Resolvido!');
-            console.log('✅ QR Code via GhostPay URL - Solução Definitiva!');
+            console.log('✅ QR Code via Biblioteca Local - Solução Definitiva!');
         });
     </script>
 </body>
-</html>
+                </html>
